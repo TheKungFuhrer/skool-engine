@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ghl__search_contacts",
+      "Read(//c/Users/Administrator/.claude/**)",
+      "Read(//c/Users/Administrator/AppData/Roaming/Claude/**)",
+      "mcp__ghl__search_conversations",
+      "mcp__ghl__get_conversation",
+      "Bash(node scripts/enrich.js load 10)",
+      "Bash(node scripts/save-batch.js data/enriched/batch.json)",
+      "Bash(node scripts/enrich.js status)",
+      "WebSearch",
+      "WebFetch(domain:marketplace.gohighlevel.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
