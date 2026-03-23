@@ -8,7 +8,11 @@
     "classify": "python enrichment/classify_batch.py",
     "export": "node scripts/export.js",
     "pipeline": "node scripts/merge.js && python enrichment/classify_batch.py && node scripts/export.js",
-    "enrich": "node scripts/enrich-auto.js"
+    "enrich": "node scripts/enrich-auto.js",
+    "sync": "node scripts/sync.js",
+    "sync:ingest": "node scripts/sync-ingest.js",
+    "sync:writeback": "node scripts/sync-writeback.js",
+    "sync:remind": "node scripts/sync-reminder.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +21,7 @@
     "csv-parse": "^6.2.1",
     "csv-stringify": "^6.7.0",
     "dotenv": "^17.3.1",
+    "nodemailer": "^8.0.3",
     "xlsx": "^0.18.5"
   }
 }
