@@ -42,18 +42,24 @@ function extractDomain(email) {
   return email.split("@")[1].trim().toLowerCase();
 }
 
-function loadSkoolMembers(progressData) {
+/**
+ * Bulk-upsert Skool members into the identity DB.
+ * Accepts an array of GHL contact objects (from the /contacts/ API).
+ * Each contact has: id, email, firstName, lastName, phone, companyName, tags, website, etc.
+ * @param {object[]} ghlContacts - Array of GHL contact objects tagged "skool"
+ * @returns {{ inserted: number, skipped: number }}
+ */
+function loadSkoolMembers(ghlContacts) {
   const db = getDb();
   const now = new Date().toISOString();
-  const members = Object.values(progressData.processed || {});
 
   const upsert = db.prepare(`
     INSERT INTO contacts (email, domain, first_name, last_name, company_name, phone, website, source, skool_member, skool_member_id, skool_classification, ghl_contact_id, first_seen_skool, last_synced)
     VALUES (@email, @domain, @first_name, @last_name, @company_name, @phone, @website, @source, 1, @skool_member_id, @skool_classification, @ghl_contact_id, @now, @now)
     ON CONFLICT(email) DO UPDATE SET
       skool_member = 1,
-      skool_member_id = excluded.skool_member_id,
-      skool_classification = excluded.skool_classification,
+      skool_member_id = COALESCE(excluded.skool_member_id, contacts.skool_member_id),
+      skool_classification = COALESCE(excluded.skool_classification, contacts.skool_classification),
       ghl_contact_id = COALESCE(excluded.ghl_contact_id, contacts.ghl_contact_id),
       domain = COALESCE(contacts.domain, excluded.domain),
       first_name = COALESCE(NULLIF(contacts.first_name, ''), excluded.first_name),
@@ -66,54 +72,36 @@ function loadSkoolMembers(progressData) {
   `);
 
   let inserted = 0;
-  let dualEmail = 0;
+  let skipped = 0;
 
   const runBatch = db.transaction((batch) => {
-    for (const member of batch) {
-      const surveyEmail = normalizeEmail(member.survey_a1 || "");
-      const profileEmail = normalizeEmail(member.email || "");
+    for (const contact of batch) {
+      const email = normalizeEmail(contact.email || "");
+      if (!email || !email.includes("@")) { skipped++; continue; }
 
-      const emails = [];
-      if (surveyEmail && surveyEmail.includes("@")) emails.push(surveyEmail);
-      if (profileEmail && profileEmail.includes("@") && profileEmail !== surveyEmail) emails.push(profileEmail);
-
-      if (emails.length === 0) continue;
-      if (emails.length === 2) dualEmail++;
-
-      const source = detectSource(member);
-      const nameParts = (member.full_name || "").trim().split(/\s+/);
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
-      const params = {
-        first_name: firstName,
-        last_name: lastName,
-        company_name: "",
-        phone: (member.survey_a2 || "").trim(),
-        website: (member.website || "").trim(),
-        source,
-        skool_member_id: member.id || "",
-        skool_classification: member.updated_category || member.classification || "",
-        ghl_contact_id: member.ghl_contact_id || null,
+      upsert.run({
+        email,
+        domain: extractDomain(email),
+        first_name: (contact.firstName || "").trim(),
+        last_name: (contact.lastName || "").trim(),
+        company_name: (contact.companyName || contact.businessName || "").trim(),
+        phone: (contact.phone || "").trim(),
+        website: (contact.website || "").trim(),
+        source: "skool_organic",
+        skool_member_id: "",
+        skool_classification: "",
+        ghl_contact_id: contact.id || null,
         now,
-      };
-
-      for (const email of emails) {
-        upsert.run({
-          ...params,
-          email,
-          domain: extractDomain(email),
-        });
-        inserted++;
-      }
+      });
+      inserted++;
     }
   });
 
-  for (let i = 0; i < members.length; i += 500) {
-    runBatch(members.slice(i, i + 500));
+  for (let i = 0; i < ghlContacts.length; i += 500) {
+    runBatch(ghlContacts.slice(i, i + 500));
   }
 
-  return { inserted, dual_email: dualEmail };
+  return { inserted, skipped };
 }
 
 function getUntaggedOverlaps() {
