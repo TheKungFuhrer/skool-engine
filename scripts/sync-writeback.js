@@ -17,8 +17,16 @@ const crypto = require('crypto');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const { getContactNotes, createContactNote, updateContactNote, sleep, GHL_API_KEY } = require('./lib/ghl-api');
+const { getContactNotes, createContactNote, updateContactNote, addContactTag, sleep, GHL_API_KEY } = require('./lib/ghl-api');
 const { loadProgress, loadWritebackLog, saveWritebackLog } = require('./lib/progress');
+
+let identityAvailable = false;
+try {
+  var identityAdapter = require('./lib/identity');
+  identityAvailable = true;
+} catch {
+  // Identity layer not installed — skip tagging
+}
 
 const NOTE_HEADER = '--- SKOOL COMMUNITY ACTIVITY — OMG RENTALS ---';
 const BATCH_SIZE = 50;
@@ -231,6 +239,32 @@ async function main() {
 
   // Final save
   saveWritebackLog(writebackLog);
+
+  // --- Identity layer: tag overlaps in GHL ---
+  if (identityAvailable) {
+    try {
+      identityAdapter.openDb();
+      const untagged = identityAdapter.getUntaggedOverlaps();
+      if (untagged.length > 0) {
+        console.log(`\n--- Identity Layer: Tagging ${untagged.length} overlaps in GHL ---`);
+        let tagged = 0;
+        for (const overlap of untagged) {
+          try {
+            await addContactTag(overlap.ghl_contact_id, "cold_outreach_overlap");
+            identityAdapter.markTagged(overlap.email);
+            tagged++;
+            console.log(`  Tagged: ${overlap.email}`);
+          } catch (err) {
+            console.log(`  Failed to tag ${overlap.email}: ${err.message.substring(0, 80)}`);
+          }
+        }
+        console.log(`  Tagged ${tagged}/${untagged.length} overlaps`);
+      }
+      identityAdapter.closeDb();
+    } catch (err) {
+      console.log(`Identity layer warning: ${err.message} — continuing without tagging`);
+    }
+  }
 
   console.log('\n--- Writeback Summary ---');
   console.log(`  Created: ${created}`);

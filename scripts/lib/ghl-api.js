@@ -102,6 +102,16 @@ async function updateContact(contactId, body) {
   });
 }
 
+async function addContactTag(contactId, tag) {
+  await sleep(REQUEST_DELAY_MS);
+  // Fetch current tags first to avoid overwriting
+  const contact = await ghlFetch(`/contacts/${contactId}`, { method: 'GET' });
+  const currentTags = contact.contact?.tags || [];
+  if (currentTags.includes(tag)) return { alreadyTagged: true };
+
+  return updateContact(contactId, { tags: [...currentTags, tag] });
+}
+
 async function getContactNotes(contactId) {
   await sleep(REQUEST_DELAY_MS);
   try {
@@ -135,6 +145,7 @@ module.exports = {
   getConversations,
   getMessages,
   updateContact,
+  addContactTag,
   getContactNotes,
   createContactNote,
   updateContactNote,
